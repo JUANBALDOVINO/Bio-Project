@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar sesión - CMMS BioMant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        clinica: {
+                            50: '#f0f7f7',
+                            100: '#d9ecec',
+                            500: '#0d7377',
+                            600: '#0a5c5f',
+                            800: '#0f3d3e',
+                            900: '#0b2c2d'
+                        }
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        /* Un solo momento animado: el trazo del monitor se dibuja al cargar */
+        .traza {
+            stroke-dasharray: 1;
+            stroke-dashoffset: 1;
+            animation: dibujar 2.6s cubic-bezier(.4, 0, .2, 1) .3s forwards;
+        }
+        @keyframes dibujar { to { stroke-dashoffset: 0; } }
+        .login-panel { background: radial-gradient(circle at 78% 18%, rgba(20, 148, 145, .28), transparent 28%), linear-gradient(145deg, #071f22 0%, #0b3436 58%, #0d5555 100%); }
+        .login-card { box-shadow: 0 28px 80px rgba(15, 61, 62, .12), 0 4px 14px rgba(15, 61, 62, .05); }
+        .login-orb { background: linear-gradient(135deg, rgba(45, 212, 191, .12), rgba(45, 212, 191, .015)); }
+        @media (prefers-reduced-motion: reduce) {
+            .traza { animation: none; stroke-dashoffset: 0; }
+            *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-[#f3f7f8] text-slate-800 antialiased">
+    <main class="grid min-h-screen lg:grid-cols-[0.92fr_1.08fr]">
+
+        <!-- Panel de marca -->
+        <section class="login-panel relative flex min-h-[300px] flex-col justify-between overflow-hidden px-7 py-7 text-white sm:px-10 sm:py-9 lg:min-h-screen lg:px-14 lg:py-12">
+            <div class="pointer-events-none absolute -right-24 top-24 h-72 w-72 rounded-full border border-teal-100/10"></div>
+            <div class="login-orb pointer-events-none absolute -right-10 top-40 h-56 w-56 rounded-full blur-2xl"></div>
+            <div class="relative z-10 flex items-center gap-3.5">
+                <span class="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-xl font-extrabold text-teal-100 shadow-lg shadow-black/10">B</span>
+                <div><p class="text-xl font-bold tracking-tight">BioMant</p><p class="mt-0.5 text-xs font-medium tracking-wide text-teal-100/75">CLÍNICA DE LOS RÍOS</p></div>
+            </div>
+
+            <div class="relative z-10 my-10 max-w-xl lg:my-0 lg:pb-12">
+                <p class="mb-5 inline-flex items-center gap-2 rounded-full border border-teal-100/15 bg-white/[0.06] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.2em] text-teal-100/90"><span class="h-1.5 w-1.5 rounded-full bg-teal-300 shadow-[0_0_10px_rgba(94,234,212,.9)]"></span> Ingeniería clínica, bajo control</p>
+                <h1 class="max-w-lg text-3xl font-bold leading-[1.15] tracking-tight sm:text-4xl lg:text-[3.25rem]">Cada equipo, con su hoja de vida <span class="text-teal-200">al día.</span></h1>
+                <p class="mt-5 max-w-md text-sm leading-7 text-teal-50/75 sm:text-base">Gestiona el inventario biomédico, programa mantenimientos y consulta la información clínica desde un solo lugar.</p>
+                <div class="mt-8 grid max-w-md grid-cols-2 gap-3">
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur-sm"><span class="text-lg text-teal-200">⌁</span><p class="mt-2 text-sm font-semibold">Inventario organizado</p><p class="mt-1 text-xs leading-5 text-teal-50/60">Equipos y datos siempre a mano.</p></div>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur-sm"><span class="text-lg text-teal-200">◷</span><p class="mt-2 text-sm font-semibold">Mantenimiento al día</p><p class="mt-1 text-xs leading-5 text-teal-50/60">Seguimiento de cada intervención.</p></div>
+                </div>
+            </div>
+
+            <div class="relative z-10 hidden items-center gap-2 text-[11px] font-medium tracking-wide text-teal-100/55 lg:flex"><span class="h-px w-8 bg-teal-300/50"></span> CUIDADO Y TRAZABILIDAD DE ACTIVOS CLÍNICOS</div>
+            <svg class="pointer-events-none absolute inset-x-0 bottom-0 hidden h-auto w-full text-teal-300/80 lg:block" viewBox="0 0 800 160" fill="none" aria-hidden="true">
+                <path class="traza" pathLength="1" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      d="M0 110 H130 l12 -9 l12 9 H215 l10 12 l16 -78 l16 98 l10 -32 H360 l16 -14 l20 14 H520 l10 12 l16 -78 l16 98 l10 -32 H650 l16 -14 l20 14 H800"/>
+            </svg>
+        </section>
+
+        <!-- Formulario -->
+        <section class="relative flex items-center justify-center overflow-hidden px-5 py-10 sm:px-10 lg:px-14">
+            <div class="pointer-events-none absolute -right-32 -top-28 h-96 w-96 rounded-full bg-teal-100/50 blur-3xl"></div>
+            <div class="login-card relative w-full max-w-md rounded-[1.75rem] border border-white bg-white/95 p-6 sm:p-9 lg:p-10">
+                <div class="mb-8 flex items-center gap-3 lg:hidden"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-clinica-600 font-extrabold text-white">B</span><div><p class="font-bold text-slate-900">BioMant</p><p class="text-[10px] font-semibold tracking-wider text-slate-500">CLÍNICA DE LOS RÍOS</p></div></div>
+                <div class="mb-7">
+                    <p class="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-clinica-500">Acceso al sistema</p>
+                    <h2 class="text-2xl font-bold tracking-tight text-slate-900 sm:text-[1.75rem]">Te damos la bienvenida</h2>
+                    <p class="mt-2 text-sm leading-6 text-slate-500">Inicia sesión con el correo registrado por tu administrador.</p>
+                </div>
+
+                <form id="form-login" class="space-y-5" novalidate>
+                    <div>
+                        <label for="correo" class="mb-2 block text-xs font-semibold text-slate-700">Correo electrónico</label>
+                        <input id="correo" name="correo" type="email" autocomplete="username" required autofocus
+                               placeholder="nombre@clinica.com" class="w-full rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-clinica-500 focus:bg-white focus:ring-4 focus:ring-clinica-500/10">
+                    </div>
+
+                    <div>
+                        <label for="password" class="mb-2 block text-xs font-semibold text-slate-700">Contraseña</label>
+                        <div class="relative">
+                            <input id="password" name="password" type="password" autocomplete="current-password" required
+                                   placeholder="Ingresa tu contraseña" class="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-3.5 pl-4 pr-24 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-clinica-500 focus:bg-white focus:ring-4 focus:ring-clinica-500/10">
+                            <button id="btn-ver" type="button" aria-controls="password" aria-pressed="false"
+                                    class="absolute inset-y-0 right-0 rounded-r-xl px-4 text-xs font-semibold text-clinica-600 transition hover:text-clinica-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clinica-500/40">
+                                Mostrar
+                            </button>
+                        </div>
+                    </div>
+
+                    <p id="mensaje-error" role="alert" aria-live="polite"
+                       class="hidden rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-800"></p>
+
+                    <button id="btn-entrar" type="submit"
+                            class="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-clinica-600 to-clinica-500 px-4 py-3.5 text-sm font-bold text-white shadow-lg shadow-teal-900/15 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-teal-900/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-clinica-500/25 disabled:cursor-not-allowed disabled:opacity-60">
+                        <span id="texto-btn-entrar">Iniciar sesión</span><span aria-hidden="true">→</span>
+                    </button>
+                </form>
+
+                <div class="mt-7 flex items-start gap-3 border-t border-slate-100 pt-5"><span class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-50 text-sm text-clinica-600">i</span><p class="text-xs leading-5 text-slate-500">¿No tienes cuenta? Pídele al administrador que te registre.</p></div>
+                <p class="mt-7 text-center text-[10px] font-medium tracking-wide text-slate-400">BIO MANT · GESTIÓN DE MANTENIMIENTO CLÍNICO</p>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const SESION_KEY = 'biomant_sesion';
+        function destinoTrasLogin() {
+            const destino = new URLSearchParams(location.search).get('returnTo') || '/';
+            return destino.startsWith('/') && !destino.startsWith('//') ? destino : '/';
+        }
+
+        const form = document.getElementById('form-login');
+        const inputCorreo = document.getElementById('correo');
+        const inputPassword = document.getElementById('password');
+        const btnEntrar = document.getElementById('btn-entrar');
+        const textoBtnEntrar = document.getElementById('texto-btn-entrar');
+        const btnVer = document.getElementById('btn-ver');
+        const mensajeError = document.getElementById('mensaje-error');
+
+        // Si ya hay una sesión vigente, no tiene sentido mostrar el login
+        function sesionVigente() {
+            try {
+                const { token } = JSON.parse(localStorage.getItem(SESION_KEY));
+                const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+                return payload.exp * 1000 > Date.now();
+            } catch (e) {
+                return false;
+            }
+        }
+
+        if (sesionVigente()) {
+            location.replace(destinoTrasLogin());
+        }
+
+        function mostrarError(texto) {
+            mensajeError.textContent = texto;
+            mensajeError.classList.remove('hidden');
+        }
+
+        btnVer.addEventListener('click', () => {
+            const oculto = inputPassword.type === 'password';
+            inputPassword.type = oculto ? 'text' : 'password';
+            btnVer.textContent = oculto ? 'Ocultar' : 'Mostrar';
+            btnVer.setAttribute('aria-pressed', String(oculto));
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            mensajeError.classList.add('hidden');
+
+            const correo = inputCorreo.value.trim();
+            const password = inputPassword.value;
+
+            if (!correo || !password) {
+                mostrarError('Ingresa tu correo y tu contraseña.');
+                return;
+            }
+
+            btnEntrar.disabled = true;
+            textoBtnEntrar.textContent = 'Verificando…';
+
+            try {
+                const respuesta = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ correo, password })
+                });
+                const datos = await respuesta.json();
+
+                if (!respuesta.ok) {
+                    mostrarError(datos.error || 'No se pudo iniciar sesión.');
+                    inputPassword.value = '';
+                    inputPassword.focus();
+                    return;
+                }
+
+                localStorage.setItem(SESION_KEY, JSON.stringify({ token: datos.token, usuario: datos.usuario }));
+                location.replace(destinoTrasLogin());
+            } catch (err) {
+                console.error(err);
+                mostrarError('No se pudo conectar con el servidor. Verifica que esté activo en http://localhost:3000.');
+            } finally {
+                btnEntrar.disabled = false;
+                textoBtnEntrar.textContent = 'Iniciar sesión';
+            }
+        });
+    </script>
+</body>
+</html>
