@@ -279,7 +279,8 @@ app.post('/api/ordenes-externas', verificarToken, soloAdministrador, async (req,
         <tr><td style="padding:10px 28px 24px"><div style="border-top:1px solid #e8eeee;padding-top:15px;color:#839397;font-size:11px;line-height:18px">Enlace personal válido durante 14 días. Por seguridad, no reenvíe este correo. Si no reconoce esta solicitud, comuníquese con la Clínica de los Ríos.</div></td></tr>
         </table><div style="padding:15px 12px 0;color:#8a9a9d;font-size:11px;line-height:17px;text-align:center">BioMant · Gestión de mantenimiento clínico</div></td></tr></table></body></html>`;
         const mailOk=Boolean(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS);
-        if(mailOk){const port=Number(process.env.SMTP_PORT||587), tr=nodemailer.createTransport({host:process.env.SMTP_HOST,port,secure:process.env.SMTP_SECURE?process.env.SMTP_SECURE==='true':port===465,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});await tr.sendMail({from:process.env.MAIL_FROM||process.env.SMTP_USER,to:d.correo,subject:`BioMant | Orden externa #${insert.insertId} · ${equipoId}`,text:`BioMant · Orden de trabajo externa #${insert.insertId}\n${tipo} · ${d.nombre_equipo}\nActivo: ${equipoId} · ${d.marca||''} ${d.modelo||''}\nSerie: ${d.numero_serie||'No registrada'}\nUbicación: ${d.ubicacion||'No registrada'}\n\nTrabajo solicitado:\n${descripcion}${protocolo?`\n\nProtocolo e instrucciones:\n${protocolo}`:''}\n\nConsultar y actualizar orden: ${enlace}\nEnlace personal válido durante 14 días.`,html});}
+        if(mailOk){const port=Number(process.env.SMTP_PORT||587), tr=nodemailer.createTransport({host:process.env.SMTP_HOST,port,secure:process.env.SMTP_SECURE?process.env.SMTP_SECURE==='true':port===465,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS},
+            family: 4});await tr.sendMail({from:process.env.MAIL_FROM||process.env.SMTP_USER,to:d.correo,subject:`BioMant | Orden externa #${insert.insertId} · ${equipoId}`,text:`BioMant · Orden de trabajo externa #${insert.insertId}\n${tipo} · ${d.nombre_equipo}\nActivo: ${equipoId} · ${d.marca||''} ${d.modelo||''}\nSerie: ${d.numero_serie||'No registrada'}\nUbicación: ${d.ubicacion||'No registrada'}\n\nTrabajo solicitado:\n${descripcion}${protocolo?`\n\nProtocolo e instrucciones:\n${protocolo}`:''}\n\nConsultar y actualizar orden: ${enlace}\nEnlace personal válido durante 14 días.`,html});}
         await registrarAuditoria(req,{modulo:'mantenimientos',accion:'crear_orden_externa',entidad:'orden_externa',id_entidad:insert.insertId,resumen:`Creó orden externa #${insert.insertId} para ${equipoId}.`,nuevos:{id_proveedor:proveedor,id_equipo:equipoId,tipo,correo_enviado:mailOk}});
         res.status(201).json({id_orden:insert.insertId,correo_enviado:mailOk});
     }catch(e){console.error('No se pudo crear la orden externa:',e.message);res.status(500).json({error:'No se pudo crear o enviar la orden. Verifica migración y SMTP.'});}
@@ -2393,7 +2394,8 @@ async function enviarAlertasPreventivas() {
         host,
         port: puerto,
         secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : puerto === 465,
-        auth: { user: usuarioSMTP, pass: claveSMTP }
+        auth: { user: usuarioSMTP, pass: claveSMTP },
+        family: 4
     });
     let enviosCorrectos = 0;
     let equiposNotificados = 0;
