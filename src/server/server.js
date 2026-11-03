@@ -15,6 +15,49 @@ const nodemailer = require('nodemailer');
 const cron = require('node-cron');
 const QRCode = require('qrcode');
 
+async function enviarCorreoTransaccional({ from, to, subject, text, html, attachments = [] }) {
+    const apiKey = String(process.env.BREVO_API_KEY || '').trim();
+    if (apiKey) {
+        const remitente = String(from || process.env.BREVO_FROM_EMAIL || '').trim();
+        if (!remitente || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(remitente)) {
+            throw new Error('Configura MAIL_FROM con un remitente verificado en Brevo.');
+        }
+        const destinatarios = (Array.isArray(to) ? to : [to]).map((destino) => {
+            if (typeof destino === 'string') return { email: destino };
+            return { email: destino.address || destino.email, ...(destino.name ? { name: destino.name } : {}) };
+        }).filter((destino) => destino.email);
+        if (!destinatarios.length) throw new Error('El correo no tiene destinatarios válidos.');
+        const adjuntosBrevo = attachments.map((adjunto) => {
+            const contenido = adjunto.content;
+            const buffer = Buffer.isBuffer(contenido) ? contenido : Buffer.from(String(contenido || ''));
+            return { name: adjunto.filename || adjunto.name || 'archivo', content: buffer.toString('base64') };
+        });
+        // Brevo admite hasta 99 destinatarios por solicitud transaccional.
+        let ultimaRespuesta;
+        for (let i = 0; i < destinatarios.length; i += 99) {
+            const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+                method: 'POST',
+                headers: { 'api-key': apiKey, 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({
+                    sender: { name: process.env.MAIL_FROM_NAME || 'BioMant', email: remitente },
+                    to: destinatarios.slice(i, i + 99), subject, textContent: text, htmlContent: html,
+                    ...(adjuntosBrevo.length ? { attachment: adjuntosBrevo } : {})
+                })
+            });
+            if (!response.ok) {
+                const detail = await response.text().catch(() => '');
+                throw new Error(`Brevo API respondió HTTP ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ''}`);
+            }
+            ultimaRespuesta = await response.json();
+        }
+        return { ...(ultimaRespuesta || {}), accepted: destinatarios.map((destino) => ({ address: destino.email })) };
+    }
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) throw new Error('Configura BREVO_API_KEY o las credenciales SMTP.');
+    const port = Number(process.env.SMTP_PORT || 587);
+    const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST, port, secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : port === 465, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }, family: 4 });
+    return transporter.sendMail({ from, to, subject, text, html, attachments });
+}
+
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRA = process.env.JWT_EXPIRA || '8h';
 
@@ -278,12 +321,23 @@ app.post('/api/ordenes-externas', verificarToken, soloAdministrador, async (req,
         <tr><td align="center" style="padding:24px 28px 10px"><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td align="center" bgcolor="#0d7377" style="border-radius:10px"><a href="${escaparHtmlServidor(enlace)}" style="display:inline-block;padding:14px 24px;border:1px solid #0d7377;border-radius:10px;color:#ffffff;font-size:14px;line-height:20px;font-weight:bold;text-decoration:none">Consultar y actualizar orden&nbsp;&nbsp;→</a></td></tr></table><div style="margin-top:12px;color:#6b8084;font-size:12px;line-height:19px">Use este acceso para aceptar la orden, informar el avance y adjuntar el reporte del servicio.</div></td></tr>
         <tr><td style="padding:10px 28px 24px"><div style="border-top:1px solid #e8eeee;padding-top:15px;color:#839397;font-size:11px;line-height:18px">Enlace personal válido durante 14 días. Por seguridad, no reenvíe este correo. Si no reconoce esta solicitud, comuníquese con la Clínica de los Ríos.</div></td></tr>
         </table><div style="padding:15px 12px 0;color:#8a9a9d;font-size:11px;line-height:17px;text-align:center">BioMant · Gestión de mantenimiento clínico</div></td></tr></table></body></html>`;
-        const mailOk=Boolean(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS);
-        if(mailOk){const port=Number(process.env.SMTP_PORT||587), tr=nodemailer.createTransport({host:process.env.SMTP_HOST,port,secure:process.env.SMTP_SECURE?process.env.SMTP_SECURE==='true':port===465,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS},
-            family: 4});await tr.sendMail({from:process.env.MAIL_FROM||process.env.SMTP_USER,to:d.correo,subject:`BioMant | Orden externa #${insert.insertId} · ${equipoId}`,text:`BioMant · Orden de trabajo externa #${insert.insertId}\n${tipo} · ${d.nombre_equipo}\nActivo: ${equipoId} · ${d.marca||''} ${d.modelo||''}\nSerie: ${d.numero_serie||'No registrada'}\nUbicación: ${d.ubicacion||'No registrada'}\n\nTrabajo solicitado:\n${descripcion}${protocolo?`\n\nProtocolo e instrucciones:\n${protocolo}`:''}\n\nConsultar y actualizar orden: ${enlace}\nEnlace personal válido durante 14 días.`,html});}
-        await registrarAuditoria(req,{modulo:'mantenimientos',accion:'crear_orden_externa',entidad:'orden_externa',id_entidad:insert.insertId,resumen:`Creó orden externa #${insert.insertId} para ${equipoId}.`,nuevos:{id_proveedor:proveedor,id_equipo:equipoId,tipo,correo_enviado:mailOk}});
-        res.status(201).json({id_orden:insert.insertId,correo_enviado:mailOk});
-    }catch(e){console.error('No se pudo crear la orden externa:',e.message);res.status(500).json({error:'No se pudo crear o enviar la orden. Verifica migración y SMTP.'});}
+        let correoEnviado = false;
+        let errorCorreo = null;
+        try {
+            await enviarCorreoTransaccional({
+                from: process.env.MAIL_FROM || process.env.BREVO_FROM_EMAIL || process.env.SMTP_USER,
+                to: d.correo,
+                subject: `BioMant | Orden externa #${insert.insertId} · ${equipoId}`,
+                text: `BioMant · Orden de trabajo externa #${insert.insertId}\n${tipo} · ${d.nombre_equipo}\nActivo: ${equipoId} · ${d.marca||''} ${d.modelo||''}\nSerie: ${d.numero_serie||'No registrada'}\nUbicación: ${d.ubicacion||'No registrada'}\n\nTrabajo solicitado:\n${descripcion}${protocolo?`\n\nProtocolo e instrucciones:\n${protocolo}`:''}\n\nConsultar y actualizar orden: ${enlace}\nEnlace personal válido durante 14 días.`,
+                html
+            });
+            correoEnviado = true;
+        } catch (error) {
+            errorCorreo = error.message || 'Error de envío';
+            console.error(`La orden externa #${insert.insertId} quedó guardada, pero no se pudo enviar el correo:`, errorCorreo);
+        }
+        await registrarAuditoria(req,{modulo:'mantenimientos',accion:'crear_orden_externa',entidad:'orden_externa',id_entidad:insert.insertId,resumen:`Creó orden externa #${insert.insertId} para ${equipoId}.`,nuevos:{id_proveedor:proveedor,id_equipo:equipoId,correo_enviado:correoEnviado,error_correo:errorCorreo}});
+        res.status(201).json({id_orden:insert.insertId,correo_enviado:correoEnviado,mensaje:correoEnviado?'Orden creada y enviada al proveedor.':'Orden creada, pero no se pudo enviar el correo. Revisa Brevo y el remitente verificado.'});    }catch(e){console.error('No se pudo guardar la orden externa:',e.message);res.status(500).json({error:'No se pudo guardar la orden. Verifica la conexión y migración de la base de datos.'});}
 });
 app.get('/orden-proveedor/:token', async (req,res) => {
     const hash=crypto.createHash('sha256').update(String(req.params.token)).digest('hex');
@@ -1071,14 +1125,12 @@ app.post('/api/equipos/:id/reprogramar-preventivo', verificarToken, sinCuarenten
             return { id_reprogramacion: insertado.insertId, id_equipo: id, nombre_equipo: equipo.nombre_equipo, ubicacion: equipo.ubicacion, fecha_anterior: fechaAnterior, fecha_nueva: nuevaFecha, motivo, nombre_usuario: req.usuario.nombre };
         });
         let correo = 'pendiente_configuracion';
-        const host = process.env.SMTP_HOST, usuarioSMTP = process.env.SMTP_USER, claveSMTP = process.env.SMTP_PASS, remitente = process.env.MAIL_FROM || usuarioSMTP;
-        if (host && usuarioSMTP && claveSMTP && remitente) {
+        const remitente = process.env.MAIL_FROM || process.env.BREVO_FROM_EMAIL || process.env.SMTP_USER;
+        if ((process.env.BREVO_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)) && remitente) {
             try {
                 const [admins] = await db.promise().query("SELECT correo FROM usuarios WHERE rol = 'Administrador' AND correo IS NOT NULL AND correo <> ''");
                 const destinos = [...new Set(admins.map((u) => String(u.correo).trim()).filter((c) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c)))];
                 if (destinos.length) {
-                    const puerto = Number(process.env.SMTP_PORT || 587);
-                    const transporte = nodemailer.createTransport({ host, port: puerto, secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : puerto === 465, auth: { user: usuarioSMTP, pass: claveSMTP } });
                     const esc = escaparHtmlServidor;
                     const fechaBonita = (valor) => {
                         const [anio, mes, dia] = String(valor).slice(0, 10).split('-').map(Number);
@@ -1086,7 +1138,7 @@ app.post('/api/equipos/:id/reprogramar-preventivo', verificarToken, sinCuarenten
                     };
                     const appUrl = String(process.env.APP_PUBLIC_URL || '').trim().replace(/\/$/, '');
                     const botonApp = /^https?:\/\//i.test(appUrl) ? `<div style="margin-top:26px"><a href="${esc(appUrl + '/#inventario')}" style="display:inline-block;padding:13px 19px;border-radius:10px;background:#0d7377;color:#fff;text-decoration:none;font-weight:700">Abrir inventario en BioMant</a></div>` : '';
-                    await transporte.sendMail({ from: remitente, to: destinos, subject: `BioMant | Preventivo reprogramado · ${id}`,
+                    await enviarCorreoTransaccional({ from: remitente, to: destinos, subject: `BioMant | Preventivo reprogramado · ${id}`,
                         text: `AVISO ADMINISTRATIVO · MANTENIMIENTO PREVENTIVO REPROGRAMADO\n\nEquipo: ${reprogramacion.nombre_equipo} (${id})\nUbicación: ${reprogramacion.ubicacion}\nFecha programada anterior: ${fechaBonita(reprogramacion.fecha_anterior)}\nNueva fecha acordada: ${fechaBonita(reprogramacion.fecha_nueva)}\nMotivo: ${motivo}\nReprogramado por: ${reprogramacion.nombre_usuario}\n\nEl cambio quedó registrado en la bitácora de BioMant.`,
                         html: `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:24px 12px;background:#edf3f5;font-family:Arial,Helvetica,sans-serif;color:#19363b"><div style="display:none;max-height:0;overflow:hidden;opacity:0">El mantenimiento preventivo de ${esc(id)} cambió de fecha. Consulta el motivo y el nuevo plazo.</div><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #dce7e9;border-radius:18px;overflow:hidden"><tr><td style="padding:26px 30px;background:#082f31;background-image:linear-gradient(120deg,#082f31,#0d7377);color:#fff"><table role="presentation" width="100%"><tr><td width="54" valign="middle"><div style="width:46px;height:46px;line-height:46px;text-align:center;border-radius:14px;background:#0d8587;color:#fff;font-size:25px;font-weight:bold">B</div></td><td style="padding-left:12px"><div style="font-size:21px;font-weight:700">BioMant</div><div style="margin-top:4px;font-size:12px;color:#b9e8e1">Gestión de mantenimiento clínico</div></td><td align="right" style="font-size:10px;line-height:1.5;letter-spacing:1px;color:#c9f7ed;font-weight:bold">AVISO<br>ADMINISTRATIVO</td></tr></table></td></tr><tr><td style="padding:30px"><div style="display:inline-block;padding:6px 10px;border-radius:20px;background:#fff5db;color:#98600a;font-size:11px;font-weight:bold;letter-spacing:.4px">PREVENTIVO · FECHA REPROGRAMADA</div><h1 style="margin:15px 0 8px;font-size:25px;line-height:1.2;color:#12383b">Se actualizó la fecha de mantenimiento</h1><p style="margin:0 0 22px;color:#607579;font-size:14px;line-height:1.6">Se registró un cambio en la programación preventiva. Revisa el motivo y la nueva fecha para coordinar el seguimiento.</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:0;background:#f5f9fa;border:1px solid #e2ebed;border-radius:12px"><tr><td style="padding:16px 18px;border-bottom:1px solid #e2ebed"><div style="font-size:10px;font-weight:bold;letter-spacing:1px;color:#71868a">EQUIPO</div><div style="margin-top:6px;font-size:17px;font-weight:bold;color:#173d40">${esc(reprogramacion.nombre_equipo)}</div><div style="margin-top:3px;font-family:monospace;font-size:12px;color:#0d7377">${esc(id)}</div></td></tr><tr><td style="padding:14px 18px"><div style="font-size:10px;font-weight:bold;letter-spacing:1px;color:#71868a">UBICACIÓN</div><div style="margin-top:5px;font-size:14px;color:#19363b">${esc(reprogramacion.ubicacion || 'No especificada')}</div></td></tr></table><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;border-spacing:8px 0"><tr><td width="50%" valign="top" style="padding:14px;border:1px solid #f0dada;border-radius:11px;background:#fff7f6"><div style="font-size:10px;font-weight:bold;letter-spacing:.8px;color:#9a6262">FECHA ANTERIOR</div><div style="margin-top:8px;font-size:15px;color:#694848">${esc(fechaBonita(reprogramacion.fecha_anterior))}</div></td><td width="50%" valign="top" style="padding:14px;border:1px solid #c9e9de;border-radius:11px;background:#effaf5"><div style="font-size:10px;font-weight:bold;letter-spacing:.8px;color:#347765">NUEVA FECHA</div><div style="margin-top:8px;font-size:15px;font-weight:bold;color:#176653">${esc(fechaBonita(reprogramacion.fecha_nueva))}</div></td></tr></table><div style="margin-top:18px;padding:17px 18px;border-left:4px solid #e5a52b;border-radius:9px;background:#fff9eb"><div style="font-size:10px;font-weight:bold;letter-spacing:1px;color:#93651a">MOTIVO DEL CAMBIO</div><div style="margin-top:8px;font-size:14px;line-height:1.6;color:#493b20;white-space:pre-wrap">${esc(motivo)}</div></div><div style="margin-top:16px;padding:15px 18px;border:1px solid #e7edef;border-radius:10px"><div style="font-size:10px;font-weight:bold;letter-spacing:1px;color:#71868a">REPROGRAMADO POR</div><div style="margin-top:6px;font-size:14px;font-weight:bold;color:#19363b">${esc(reprogramacion.nombre_usuario)}</div></div>${botonApp}</td></tr><tr><td style="padding:17px 30px;background:#f7f9fa;border-top:1px solid #e8eef0;color:#839397;font-size:11px;line-height:1.5">Este cambio quedó registrado en la trazabilidad de BioMant. Mensaje automático para seguimiento administrativo.</td></tr></table></body></html>` });
                     correo = 'enviado';
@@ -1328,12 +1380,9 @@ const SELECT_REPORTE_TECNOVIGILANCIA = `
     LEFT JOIN tecnovigilancia_bloqueos b ON b.id_equipo = t.id_equipo AND b.activo`;
 
 async function notificarResponsablesTecnovigilancia(reporte, baseAplicacion) {
-    const host = process.env.SMTP_HOST;
-    const usuarioSMTP = process.env.SMTP_USER;
-    const claveSMTP = process.env.SMTP_PASS;
-    const remitente = process.env.MAIL_FROM || usuarioSMTP;
-    if (!host || !usuarioSMTP || !claveSMTP || !remitente) {
-        console.warn('Alerta de tecnovigilancia registrada; correo prioritario pendiente de configuración SMTP.');
+    const remitente = process.env.MAIL_FROM || process.env.BREVO_FROM_EMAIL || process.env.SMTP_USER;
+    if (!(process.env.BREVO_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)) || !remitente) {
+        console.warn('Alerta de tecnovigilancia registrada; configura BREVO_API_KEY y un MAIL_FROM verificado, o credenciales SMTP.');
         return { resultado: 'pendiente_configuracion', cantidad_destinatarios: 0 };
     }
     try {
@@ -1346,12 +1395,6 @@ async function notificarResponsablesTecnovigilancia(reporte, baseAplicacion) {
             console.warn('Alerta de tecnovigilancia registrada; no hay destinatarios administrativos configurados.');
             return { resultado: 'sin_destinatarios', cantidad_destinatarios: 0 };
         }
-        const puerto = Number(process.env.SMTP_PORT || 587);
-        const transporter = nodemailer.createTransport({
-            host, port: puerto,
-            secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : puerto === 465,
-            auth: { user: usuarioSMTP, pass: claveSMTP }
-        });
         const escape = escaparHtmlServidor;
         const tiposLegibles = {
             evento_adverso_serio: 'Evento adverso serio',
@@ -1368,13 +1411,13 @@ async function notificarResponsablesTecnovigilancia(reporte, baseAplicacion) {
         const qrUrl = `${urlBase || base || 'http://localhost:3000'}/?equipo=${encodeURIComponent(reporte.id_equipo)}`;
         const qrEquipo = await QRCode.toBuffer(qrUrl, { width: 360, margin: 2, errorCorrectionLevel: 'M', type: 'png' });
         const texto = `ALERTA PRIORITARIA DE TECNOVIGILANCIA · BIOMANT\n\n${numeroReporte} · ${tipo}\n\nEQUIPO EN CUARENTENA Y FUERA DE SERVICIO\nEl activo quedó bloqueado para cambios rutinarios hasta su liberación por un Administrador.\n\nEQUIPO\n${reporte.nombre_equipo} (${reporte.id_equipo})\nMarca y modelo: ${[reporte.marca, reporte.modelo].filter(Boolean).join(' ') || 'No registrados'}\nNúmero de serie: ${reporte.numero_serie || 'No registrado'}\nUbicación del equipo: ${reporte.ubicacion_equipo || 'No registrada'}\n\nREPORTE\nFecha del evento: ${fechaEvento}\nLugar del evento: ${reporte.lugar_evento || 'No especificado'}\nPersona que manejaba el equipo: ${personaManejaba}\nReportado por: ${reporte.nombre_reportante || 'No identificado'}\n\nDescripción: ${reporte.descripcion}\nConsecuencias: ${reporte.consecuencias || 'No especificadas'}\nAcciones inmediatas: ${reporte.acciones_inmediatas || 'No especificadas'}\n\nEl QR adjunto abre la ficha del equipo en BioMant.`;
-        await transporter.sendMail({
+        await enviarCorreoTransaccional({
             from: remitente,
             to: destinatarios,
             subject: `BioMant | Alerta prioritaria ${numeroReporte} · ${reporte.id_equipo}`,
             text: texto,
             attachments: [{ filename: `QR_${reporte.id_equipo}.png`, content: qrEquipo, contentType: 'image/png', cid: 'qr-equipo-biomant' }],
-            html: `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:22px 10px;background:#eef3f5;font-family:Arial,Helvetica,sans-serif;color:#18383c"><div style="display:none;max-height:0;overflow:hidden;opacity:0">${escape(numeroReporte)} · ${escape(tipo)} · ${escape(reporte.nombre_equipo)} (${escape(reporte.id_equipo)}) quedó en cuarentena.</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #dce7e9;border-radius:20px;overflow:hidden"><tr><td style="padding:25px 28px;background:#073638;background-image:linear-gradient(125deg,#073638,#0b7775);color:#fff"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="54" valign="middle"><div style="width:46px;height:46px;line-height:46px;text-align:center;border-radius:14px;background:#0d8b87;color:#fff;font-size:25px;font-weight:bold">B</div></td><td style="padding-left:12px"><div style="font-size:22px;font-weight:700">BioMant</div><div style="margin-top:4px;font-size:12px;color:#c3ece5">Seguridad de dispositivos médicos</div></td><td align="right" style="font-size:10px;line-height:1.5;letter-spacing:1px;color:#d3fff4;font-weight:bold">AVISO<br>PRIORITARIO</td></tr></table></td></tr><tr><td style="padding:26px 28px 10px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="padding:7px 11px;border-radius:20px;background:#fff2e9;color:#a33b20;font-size:11px;font-weight:bold;letter-spacing:.5px">${escape(tipo.toUpperCase())}</td><td style="padding-left:9px;color:#71868a;font-size:12px;font-weight:bold">${escape(numeroReporte)}</td></tr></table><h1 style="margin:15px 0 9px;color:#123b3e;font-size:25px;line-height:1.2">Equipo puesto en cuarentena</h1><p style="margin:0;color:#5c7175;font-size:14px;line-height:1.65">Se recibió un reporte de seguridad. El equipo quedó fuera de servicio y bloqueado para cambios rutinarios hasta que un Administrador evalúe el caso y autorice su liberación.</p></td></tr><tr><td style="padding:18px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #dce9e9;border-radius:14px;background:#f7fafa"><tr><td style="padding:17px 18px"><div style="font-size:10px;font-weight:bold;letter-spacing:1px;color:#74898d">ACTIVO BAJO CUARENTENA</div><div style="margin-top:7px;font-size:19px;font-weight:bold;color:#163d40">${escape(reporte.nombre_equipo || 'Equipo médico')}</div><div style="margin-top:4px;font-family:Arial,sans-serif;font-size:13px;color:#087873;font-weight:bold">${escape(reporte.id_equipo)}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px"><tr><td width="50%" valign="top" style="padding:8px 8px 8px 0;border-top:1px solid #e5eeee"><div style="font-size:10px;color:#829397;font-weight:bold">MARCA / MODELO</div><div style="margin-top:4px;font-size:13px;color:#29494d">${escape([reporte.marca, reporte.modelo].filter(Boolean).join(' ') || 'No registrados')}</div></td><td width="50%" valign="top" style="padding:8px 0 8px 8px;border-top:1px solid #e5eeee"><div style="font-size:10px;color:#829397;font-weight:bold">NÚMERO DE SERIE</div><div style="margin-top:4px;font-size:13px;color:#29494d">${escape(reporte.numero_serie || 'No registrado')}</div></td></tr><tr><td width="50%" valign="top" style="padding:9px 8px 0 0"><div style="font-size:10px;color:#829397;font-weight:bold">UBICACIÓN DEL EQUIPO</div><div style="margin-top:4px;font-size:13px;color:#29494d">${escape(reporte.ubicacion_equipo || 'No registrada')}</div></td><td width="50%" valign="top" style="padding:9px 0 0 8px"><div style="font-size:10px;color:#829397;font-weight:bold">PERSONA QUE LO MANEJABA</div><div style="margin-top:4px;font-size:13px;color:#29494d">${escape(personaManejaba)}</div></td></tr></table></td></tr></table></td></tr><tr><td style="padding:14px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #dfe9eb;border-radius:13px"><tr><td style="padding:15px 17px"><div style="font-size:10px;font-weight:bold;letter-spacing:1px;color:#74898d">DATOS DEL EVENTO</div><div style="margin-top:11px;font-size:13px;line-height:1.7;color:#29494d"><b>Fecha y hora:</b> ${escape(fechaEvento)}<br><b>Lugar del evento:</b> ${escape(reporte.lugar_evento || 'No especificado')}<br><b>Reportado por:</b> ${escape(reporte.nombre_reportante || 'No identificado')}</div></td></tr></table></td></tr><tr><td style="padding:14px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eadfc8;border-radius:13px;background:#fffcf6"><tr><td style="padding:15px 17px"><div style="font-size:10px;font-weight:bold;letter-spacing:1px;color:#937334">DESCRIPCIÓN INICIAL</div><div style="margin-top:8px;font-size:13px;line-height:1.65;color:#443d30;white-space:pre-wrap">${escape(reporte.descripcion || 'Sin descripción')}</div></td></tr></table></td></tr><tr><td style="padding:12px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-spacing:8px 0"><tr><td width="50%" valign="top" style="padding:13px;border:1px solid #e3eaf0;border-radius:12px;background:#f7f9fb"><div style="font-size:10px;font-weight:bold;letter-spacing:.6px;color:#71868a">CONSECUENCIAS</div><div style="margin-top:7px;font-size:12px;line-height:1.6;color:#40585c;white-space:pre-wrap">${escape(reporte.consecuencias || 'No especificadas')}</div></td><td width="50%" valign="top" style="padding:13px;border:1px solid #cde9e2;border-radius:12px;background:#f1faf7"><div style="font-size:10px;font-weight:bold;letter-spacing:.6px;color:#418173">ACCIONES INMEDIATAS</div><div style="margin-top:7px;font-size:12px;line-height:1.6;color:#31574f;white-space:pre-wrap">${escape(reporte.acciones_inmediatas || 'No especificadas')}</div></td></tr></table></td></tr><tr><td style="padding:18px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #dce9e9;border-radius:14px;background:#f7fafa"><tr><td align="center" style="padding:17px 18px"><div style="font-size:13px;font-weight:bold;color:#173f42">QR del equipo</div><div style="margin-top:4px;font-size:11px;color:#71868a">Escanéalo para abrir la ficha del activo en BioMant.</div><img src="cid:qr-equipo-biomant" width="180" height="180" alt="Código QR del equipo ${escape(reporte.id_equipo)}" style="display:block;width:180px;height:180px;margin:12px auto 0;border:8px solid #fff;border-radius:12px"><div style="margin-top:7px;font-size:11px;color:#087873;font-weight:bold">${escape(reporte.id_equipo)}</div></td></tr></table></td></tr><tr><td style="padding:0 28px 26px">${enlace}</td></tr><tr><td style="padding:16px 28px;background:#f7f9fa;border-top:1px solid #e8eef0;color:#829397;font-size:11px;line-height:1.6">Notificación automática de BioMant · ${escape(numeroReporte)}. Este mensaje no incluye datos identificables del paciente. El QR dirige a la ficha del equipo y requiere acceso autorizado al sistema.</td></tr></table></body></html>`
+            html: `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:22px 10px;background:#eef3f5;font-family:Arial,Helvetica,sans-serif;color:#18383c"><div style="display:none;max-height:0;overflow:hidden;opacity:0">${escape(numeroReporte)} · ${escape(tipo)} · ${escape(reporte.nombre_equipo)} (${escape(reporte.id_equipo)}) quedó en cuarentena.</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #dce7e9;border-radius:20px;overflow:hidden"><tr><td style="padding:25px 28px;background:#073638;background-image:linear-gradient(125deg,#073638,#0b7775);color:#fff"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="54" valign="middle"><div style="width:46px;height:46px;line-height:46px;text-align:center;border-radius:14px;background:#0d8b87;color:#fff;font-size:25px;font-weight:bold">B</div></td><td style="padding-left:12px"><div style="font-size:22px;font-weight:700">BioMant</div><div style="margin-top:4px;font-size:12px;color:#c3ece5">Seguridad de dispositivos médicos</div></td><td align="right" style="font-size:10px;line-height:1.5;letter-spacing:1px;color:#d3fff4;font-weight:bold">AVISO<br>PRIORITARIO</td></tr></table></td></tr><tr><td style="padding:26px 28px 10px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="padding:7px 11px;border-radius:20px;background:#fff2e9;color:#a33b20;font-size:11px;font-weight:bold;letter-spacing:.5px">${escape(tipo.toUpperCase())}</td><td style="padding-left:9px;color:#71868a;font-size:12px;font-weight:bold">${escape(numeroReporte)}</td></tr></table><h1 style="margin:15px 0 9px;color:#123b3e;font-size:25px;line-height:1.2">Equipo puesto en cuarentena</h1><p style="margin:0;color:#5c7175;font-size:14px;line-height:1.65">Se recibió un reporte de seguridad. El equipo quedó fuera de servicio y bloqueado para cambios rutinarios hasta que un Administrador evalúe el caso y autorice su liberación.</p></td></tr><tr><td style="padding:18px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #dce9e9;border-radius:14px;background:#f7fafa"><tr><td style="padding:17px 18px"><div style="font-size:10px;font-weight:bold;letter-spacing:1px;color:#74898d">ACTIVO BAJO CUARENTENA</div><div style="margin-top:7px;font-size:19px;font-weight:bold;color:#163d40">${escape(reporte.nombre_equipo || 'Equipo médico')}</div><div style="margin-top:4px;font-family:Arial,sans-serif;font-size:13px;color:#087873;font-weight:bold">${escape(reporte.id_equipo)}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px"><tr><td width="50%" valign="top" style="padding:8px 8px 8px 0;border-top:1px solid #e5eeee"><div style="font-size:10px;color:#829397;font-weight:bold">MARCA / MODELO</div><div style="margin-top:4px;font-size:13px;color:#29494d">${escape([reporte.marca, reporte.modelo].filter(Boolean).join(' ') || 'No registrados')}</div></td><td width="50%" valign="top" style="padding:8px 0 8px 8px;border-top:1px solid #e5eeee"><div style="font-size:10px;color:#829397;font-weight:bold">NÚMERO DE SERIE</div><div style="margin-top:4px;font-size:13px;color:#29494d">${escape(reporte.numero_serie || 'No registrado')}</div></td></tr><tr><td width="50%" valign="top" style="padding:9px 8px 0 0"><div style="font-size:10px;color:#829397;font-weight:bold">UBICACIÓN DEL EQUIPO</div><div style="margin-top:4px;font-size:13px;color:#29494d">${escape(reporte.ubicacion_equipo || 'No registrada')}</div></td><td width="50%" valign="top" style="padding:9px 0 0 8px"><div style="font-size:10px;color:#829397;font-weight:bold">PERSONA QUE LO MANEJABA</div><div style="margin-top:4px;font-size:13px;color:#29494d">${escape(personaManejaba)}</div></td></tr></table></td></tr></table></td></tr><tr><td style="padding:14px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #dfe9eb;border-radius:13px"><tr><td style="padding:15px 17px"><div style="font-size:10px;font-weight:bold;letter-spacing:1px;color:#74898d">DATOS DEL EVENTO</div><div style="margin-top:11px;font-size:13px;line-height:1.7;color:#29494d"><b>Fecha y hora:</b> ${escape(fechaEvento)}<br><b>Lugar del evento:</b> ${escape(reporte.lugar_evento || 'No especificado')}<br><b>Reportado por:</b> ${escape(reporte.nombre_reportante || 'No identificado')}</div></td></tr></table></td></tr><tr><td style="padding:14px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eadfc8;border-radius:13px;background:#fffcf6"><tr><td style="padding:15px 17px"><div style="font-size:10px;font-weight:bold;letter-spacing:1px;color:#937334">DESCRIPCIÓN INICIAL</div><div style="margin-top:8px;font-size:13px;line-height:1.65;color:#443d30;white-space:pre-wrap">${escape(reporte.descripcion || 'Sin descripción')}</div></td></tr></table></td></tr><tr><td style="padding:12px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-spacing:8px 0"><tr><td width="50%" valign="top" style="padding:13px;border:1px solid #e3eaf0;border-radius:12px;background:#f7f9fb"><div style="font-size:10px;font-weight:bold;letter-spacing:.6px;color:#71868a">CONSECUENCIAS</div><div style="margin-top:7px;font-size:12px;line-height:1.6;color:#40585c;white-space:pre-wrap">${escape(reporte.consecuencias || 'No especificadas')}</div></td><td width="50%" valign="top" style="padding:13px;border:1px solid #cde9e2;border-radius:12px;background:#f1faf7"><div style="font-size:10px;font-weight:bold;letter-spacing:.6px;color:#418173">ACCIONES INMEDIATAS</div><div style="margin-top:7px;font-size:12px;line-height:1.6;color:#31574f;white-space:pre-wrap">${escape(reporte.acciones_inmediatas || 'No especificadas')}</div></td></tr></table></td></tr><tr><td style="padding:18px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #dce9e9;border-radius:14px;background:#f7fafa"><tr><td align="center" style="padding:17px 18px"><div style="font-size:13px;font-weight:bold;color:#173f42">QR del equipo</div><div style="margin-top:4px;font-size:11px;color:#71868a">Escanéalo para abrir la ficha del activo en BioMant.</div><div style="display:inline-block;margin:12px auto 0;padding:14px 18px;border:1px solid #cfe7e4;border-radius:10px;background:#effaf7;color:#087873;font-size:13px;font-weight:bold">El código QR del equipo se incluye como archivo adjunto.</div><div style="margin-top:7px;font-size:11px;color:#087873;font-weight:bold">${escape(reporte.id_equipo)}</div></td></tr></table></td></tr><tr><td style="padding:0 28px 26px">${enlace}</td></tr><tr><td style="padding:16px 28px;background:#f7f9fa;border-top:1px solid #e8eef0;color:#829397;font-size:11px;line-height:1.6">Notificación automática de BioMant · ${escape(numeroReporte)}. Este mensaje no incluye datos identificables del paciente. El QR dirige a la ficha del equipo y requiere acceso autorizado al sistema.</td></tr></table></body></html>`
         });
         return { resultado: 'enviada', cantidad_destinatarios: destinatarios.length };
     } catch (error) {
@@ -2344,12 +2387,9 @@ function etiquetaEtapaAlertaPreventiva(dias) {
 }
 
 async function enviarAlertasPreventivas() {
-    const host = process.env.SMTP_HOST;
-    const usuarioSMTP = process.env.SMTP_USER;
-    const claveSMTP = process.env.SMTP_PASS;
-    const remitente = process.env.MAIL_FROM || usuarioSMTP;
-    if (!host || !usuarioSMTP || !claveSMTP || !remitente) {
-        console.warn('Notificaciones por correo desactivadas: configura SMTP_HOST, SMTP_USER, SMTP_PASS y MAIL_FROM en .env.');
+    const remitente = process.env.MAIL_FROM || process.env.BREVO_FROM_EMAIL || process.env.SMTP_USER;
+    if (!(process.env.BREVO_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)) || !remitente) {
+        console.warn('Notificaciones por correo desactivadas: configura BREVO_API_KEY y MAIL_FROM verificado, o credenciales SMTP.');
         return 0;
     }
 
@@ -2389,14 +2429,6 @@ async function enviarAlertasPreventivas() {
     );
     const yaEnviadas = new Set(enviadas.map((fila) => `${fila.id_equipo}|${fila.fecha_programada}|${fila.dias_alerta}|${String(fila.correo_destinatario).toLowerCase()}`));
 
-    const puerto = Number(process.env.SMTP_PORT || 587);
-    const transporter = nodemailer.createTransport({
-        host,
-        port: puerto,
-        secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : puerto === 465,
-        auth: { user: usuarioSMTP, pass: claveSMTP },
-        family: 4
-    });
     let enviosCorrectos = 0;
     let equiposNotificados = 0;
     for (const correo of destinatarios) {
@@ -2437,7 +2469,7 @@ async function enviarAlertasPreventivas() {
             ? `<tr><td align="center" style="padding:6px 26px 26px"><a href="${escaparHtmlServidor(basePublica)}" style="display:inline-block;border-radius:10px;background:#0d7377;color:#ffffff;text-decoration:none;font-family:Arial,sans-serif;font-size:14px;font-weight:700;padding:14px 24px">Abrir BioMant&nbsp;&nbsp;→</a></td></tr>`
             : '';
         try {
-            const resultadoCorreo = await transporter.sendMail({
+            const resultadoCorreo = await enviarCorreoTransaccional({
                 from: remitente,
                 to: correo,
                 subject: `BioMant | ${pendientes.length} alerta${pendientes.length === 1 ? '' : 's'} de mantenimiento preventivo`,
@@ -2470,7 +2502,7 @@ async function enviarAlertasPreventivas() {
             const destinatarioAceptado = (resultadoCorreo.accepted || []).some((aceptado) =>
                 String(aceptado.address || aceptado).toLowerCase() === correo.toLowerCase()
             );
-            if (!destinatarioAceptado) throw new Error('El servidor SMTP no aceptó este destinatario.');
+            if (!destinatarioAceptado) throw new Error('El proveedor de correo no aceptó este destinatario.');
             const registros = pendientes.map((equipo) => [equipo.id_equipo, equipo.fecha_programada, equipo.estado_alerta, equipo.dias_alerta, correo]);
             await db.promise().query('INSERT IGNORE INTO notificaciones_mantenimiento_destinatarios (id_equipo, fecha_programada, estado_alerta, dias_alerta, correo_destinatario) VALUES ?', [registros]);
             enviosCorrectos += 1;
@@ -2483,15 +2515,18 @@ async function enviarAlertasPreventivas() {
     return enviosCorrectos;
 }
 
-const tieneSMTP = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
-if (tieneSMTP) {
+const tieneCorreoConfigurado = Boolean(
+    (process.env.BREVO_API_KEY && (process.env.MAIL_FROM || process.env.BREVO_FROM_EMAIL)) ||
+    (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+);
+if (tieneCorreoConfigurado) {
     enviarAlertasPreventivas().catch((error) => console.error('Falló la revisión inicial de alertas preventivas:', error));
     cron.schedule(process.env.MAINTENANCE_ALERT_CRON || '0 8 * * *', () => {
         enviarAlertasPreventivas().catch((error) => console.error('Falló el envío de alertas preventivas:', error));
     }, { timezone: process.env.APP_TIMEZONE || 'America/Bogota' });
     console.log(`Alertas por correo programadas: ${process.env.MAINTENANCE_ALERT_CRON || '0 8 * * *'} (${process.env.APP_TIMEZONE || 'America/Bogota'}).`);
 } else {
-    console.warn('Notificaciones por correo desactivadas hasta configurar SMTP_HOST, SMTP_USER y SMTP_PASS.');
+    console.warn('Notificaciones por correo desactivadas hasta configurar BREVO_API_KEY + MAIL_FROM o credenciales SMTP.');
 }
 
 app.listen(PORT, () => {
