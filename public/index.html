@@ -672,6 +672,7 @@
         let temporizadorRevisionMesGrafica = null;
         let resumenEstadosDB = [];
         let fichaQRAbierta = false;
+        let urlVistaPreviaFotoLocal = null;
 
         // --- SESIÓN ---
         const sesion = JSON.parse(localStorage.getItem(SESION_KEY) || 'null');
@@ -1155,6 +1156,10 @@
 
         function cerrarModalDetalle() {
             modal.classList.add('hidden');
+            if (urlVistaPreviaFotoLocal) {
+                URL.revokeObjectURL(urlVistaPreviaFotoLocal);
+                urlVistaPreviaFotoLocal = null;
+            }
         }
 
         // Eventos para cerrar el modal
@@ -1604,8 +1609,35 @@
         document.getElementById('input-imagen-equipo').addEventListener('change', (evento) => {
             const archivo = evento.target.files?.[0];
             const nombre = document.getElementById('nombre-imagen-equipo');
+            const foto = document.getElementById('modal-foto-equipo');
+            const botonFoto = document.getElementById('btn-ampliar-foto-equipo');
+            const fotoVacia = document.getElementById('modal-foto-vacia');
+            const mensaje = document.getElementById('modal-imagen-msg');
+            if (urlVistaPreviaFotoLocal) {
+                URL.revokeObjectURL(urlVistaPreviaFotoLocal);
+                urlVistaPreviaFotoLocal = null;
+            }
+            mensaje.className = 'mt-2 hidden text-xs';
+            mensaje.textContent = '';
+            if (!archivo) return;
             nombre.textContent = archivo ? `${archivo.name} · ${(archivo.size / (1024 * 1024)).toFixed(2)} MB` : 'JPG, PNG o WebP · máximo 5 MB';
             nombre.className = `mt-0.5 block truncate text-[11px] ${archivo ? 'font-semibold text-teal-700' : 'text-slate-400'}`;
+            if (!['image/jpeg', 'image/png', 'image/webp'].includes(archivo.type)) {
+                mensaje.className = 'mt-2 text-xs font-medium text-rose-700';
+                mensaje.textContent = 'Elige una imagen JPG, PNG o WebP.';
+                return;
+            }
+            if (archivo.size > 5 * 1024 * 1024) {
+                mensaje.className = 'mt-2 text-xs font-medium text-rose-700';
+                mensaje.textContent = 'La imagen supera el límite de 5 MB.';
+                return;
+            }
+            urlVistaPreviaFotoLocal = URL.createObjectURL(archivo);
+            foto.src = urlVistaPreviaFotoLocal;
+            fotoVacia.classList.add('hidden');
+            botonFoto.classList.remove('hidden');
+            mensaje.className = 'mt-2 text-xs text-slate-500';
+            mensaje.textContent = 'Vista previa lista. Pulsa “Subir fotografía” para guardarla en Supabase.';
         });
 
         document.getElementById('btn-subir-imagen-equipo').addEventListener('click', async () => {
@@ -1615,6 +1647,18 @@
             if (!input.files[0]) {
                 mensaje.className = 'mt-2 text-xs text-rose-700';
                 mensaje.textContent = 'Selecciona primero una imagen JPEG, PNG o WebP.';
+                mostrarToast(mensaje.textContent, true);
+                return;
+            }
+            if (!['image/jpeg', 'image/png', 'image/webp'].includes(input.files[0].type)) {
+                mensaje.className = 'mt-2 text-xs text-rose-700';
+                mensaje.textContent = 'Elige una imagen JPG, PNG o WebP.';
+                mostrarToast(mensaje.textContent, true);
+                return;
+            }
+            if (input.files[0].size > 5 * 1024 * 1024) {
+                mensaje.className = 'mt-2 text-xs text-rose-700';
+                mensaje.textContent = 'La imagen supera el límite de 5 MB.';
                 mostrarToast(mensaje.textContent, true);
                 return;
             }
@@ -1631,6 +1675,10 @@
                 const equipo = equipos.find((item) => item.id_equipo === equipoModalId);
                 if (!equipo) throw new Error('No se encontró el equipo para actualizar su fotografía.');
                 equipo.foto_equipo = resultado.foto_equipo;
+                if (urlVistaPreviaFotoLocal) {
+                    URL.revokeObjectURL(urlVistaPreviaFotoLocal);
+                    urlVistaPreviaFotoLocal = null;
+                }
                 input.value = '';
                 document.getElementById('nombre-imagen-equipo').textContent = 'JPG, PNG o WebP · máximo 5 MB';
                 document.getElementById('nombre-imagen-equipo').className = 'mt-0.5 block truncate text-[11px] text-slate-400';

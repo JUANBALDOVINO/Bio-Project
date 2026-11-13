@@ -1283,12 +1283,22 @@ app.post('/api/equipos/:id/imagen', soloAdministrador, sinCuarentenaActiva, (req
                     ).catch(() => {});
                 }
                 console.error('Error al guardar la imagen en Supabase Storage:', error.message || error);
-                const faltaConfiguracion = /SUPABASE_(SECRET_KEY|SERVICE_ROLE_KEY|URL)/.test(error.message || '');
-                res.status(faltaConfiguracion ? 503 : 502).json({
-                    error: faltaConfiguracion
-                        ? 'Configura SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY en el servidor para activar las fotos en Supabase Storage.'
-                        : 'No se pudo guardar la imagen en Supabase Storage.'
-                });
+                const detalle = String(error.message || '');
+                const faltaConfiguracion = /Falta SUPABASE_(SECRET_KEY|SERVICE_ROLE_KEY)|Configura SUPABASE_URL/i.test(detalle);
+                const estadoSupabase = Number(error.status || 0);
+                let mensaje = 'Supabase no pudo guardar la foto. Revisa los registros del servicio en Render para ver el detalle.';
+                if (faltaConfiguracion) {
+                    mensaje = 'Falta configurar SUPABASE_URL y una clave de servidor (SUPABASE_SECRET_KEY o SUPABASE_SERVICE_ROLE_KEY) en las variables de entorno de Render.';
+                } else if (estadoSupabase === 401 || estadoSupabase === 403) {
+                    mensaje = 'Supabase rechazó la clave o los permisos de Storage. Verifica en Render la clave de servidor y el acceso al bucket.';
+                } else if (estadoSupabase === 404) {
+                    mensaje = `No se encontró el bucket “${SUPABASE_STORAGE_BUCKET}” en el proyecto Supabase configurado.`;
+                } else if (estadoSupabase === 413) {
+                    mensaje = 'Supabase rechazó la imagen porque supera el límite de tamaño configurado para el bucket.';
+                } else if (estadoSupabase === 415) {
+                    mensaje = 'El bucket no permite este formato de imagen. Permite JPEG, PNG y WebP en Supabase Storage.';
+                }
+                res.status(faltaConfiguracion ? 503 : 502).json({ error: mensaje });
             }
         })();
     });
