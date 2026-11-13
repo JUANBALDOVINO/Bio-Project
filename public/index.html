@@ -56,8 +56,8 @@
         @media (prefers-reduced-motion: reduce) {
             #sidebar, #contenido, #sidebar-overlay { transition: none; }
         }
-        /* La ficha usa tres filas explícitas: cabecera, cuerpo desplazable y pie.
-           Así el cuerpo no puede colapsar ni dejar un bloque vacío debajo del pie. */
+        /* La ficha completa se desplaza como una sola unidad. Evita que un
+           cálculo de altura del cuerpo deje el pie en mitad del panel. */
         #modal-detalle:not(.hidden) {
             display: flex !important;
             align-items: center !important;
@@ -65,34 +65,36 @@
             overflow: hidden !important;
         }
         #modal-detalle-panel {
-            display: grid !important;
-            grid-template-rows: auto minmax(0, 1fr) auto !important;
+            display: block !important;
             width: min(100%, 56rem) !important;
-            height: min(92vh, 58rem) !important;
-            height: min(92dvh, 58rem) !important;
+            height: auto !important;
             max-height: calc(100vh - 1.5rem) !important;
             max-height: calc(100dvh - 1.5rem) !important;
-            min-height: 0 !important;
-            overflow: hidden !important;
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
             overflow-anchor: none !important;
         }
-        #modal-detalle-panel > header { display: block !important; min-height: max-content !important; }
-        #modal-detalle-panel > footer { display: flex !important; min-height: max-content !important; }
+        #modal-detalle-panel > header {
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 20 !important;
+            display: block !important;
+        }
+        #modal-detalle-panel > footer {
+            position: sticky !important;
+            bottom: 0 !important;
+            z-index: 20 !important;
+            display: flex !important;
+        }
         #modal-detalle-contenido {
             display: block !important;
             height: auto !important;
-            min-height: 0 !important;
             max-height: none !important;
-            overflow-x: hidden !important;
-            overflow-y: auto !important;
-            overscroll-behavior: contain;
-            overflow-anchor: none !important;
+            overflow: visible !important;
         }
         @media (max-width: 640px) {
             #modal-detalle-panel {
                 width: 100% !important;
-                height: calc(100vh - 1.5rem) !important;
-                height: calc(100dvh - 1.5rem) !important;
                 max-height: calc(100vh - 1.5rem) !important;
                 max-height: calc(100dvh - 1.5rem) !important;
             }
@@ -1140,8 +1142,8 @@
 
         // --- FUNCIONES DEL MODAL ---
         function abrirModalDetalle(equipo) {
-            const contenidoModal = document.getElementById('modal-detalle-contenido');
-            contenidoModal.scrollTop = 0;
+            const panelModal = document.getElementById('modal-detalle-panel');
+            panelModal.scrollTop = 0;
             document.getElementById('modal-nombre').textContent = equipo.nombre_equipo || 'Sin nombre';
             document.getElementById('modal-id').textContent = `ID: ${equipo.id_equipo || 'N/A'}`;
             document.getElementById('modal-categoria-badge').textContent = equipo.tipo_categoria || 'General';
@@ -1198,8 +1200,7 @@
             document.body.dataset.modalDetalleOverflowAnterior ??= document.body.style.overflow;
             document.body.style.overflow = 'hidden';
             requestAnimationFrame(() => {
-                contenidoModal.scrollTop = 0;
-                document.getElementById('modal-detalle-panel').scrollTop = 0;
+                panelModal.scrollTop = 0;
             });
         }
 
