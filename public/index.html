@@ -56,8 +56,8 @@
         @media (prefers-reduced-motion: reduce) {
             #sidebar, #contenido, #sidebar-overlay { transition: none; }
         }
-        /* En la ficha solo se desplaza el cuerpo; cabecera y acciones permanecen
-           visibles. Flex evita que el contenido largo empuje o recorte las filas. */
+        /* La ficha usa tres filas explícitas: cabecera, cuerpo desplazable y pie.
+           Así el cuerpo no puede colapsar ni dejar un bloque vacío debajo del pie. */
         #modal-detalle:not(.hidden) {
             display: flex !important;
             align-items: center !important;
@@ -65,8 +65,8 @@
             overflow: hidden !important;
         }
         #modal-detalle-panel {
-            display: flex !important;
-            flex-direction: column !important;
+            display: grid !important;
+            grid-template-rows: auto minmax(0, 1fr) auto !important;
             width: min(100%, 56rem) !important;
             height: min(92vh, 58rem) !important;
             height: min(92dvh, 58rem) !important;
@@ -76,13 +76,13 @@
             overflow: hidden !important;
             overflow-anchor: none !important;
         }
-        #modal-detalle-panel > header { display: block !important; flex: 0 0 auto !important; }
-        #modal-detalle-panel > footer { display: flex !important; flex: 0 0 auto !important; }
+        #modal-detalle-panel > header { display: block !important; min-height: max-content !important; }
+        #modal-detalle-panel > footer { display: flex !important; min-height: max-content !important; }
         #modal-detalle-contenido {
             display: block !important;
-            flex: 1 1 0px !important;
-            height: 0 !important;
+            height: auto !important;
             min-height: 0 !important;
+            max-height: none !important;
             overflow-x: hidden !important;
             overflow-y: auto !important;
             overscroll-behavior: contain;
