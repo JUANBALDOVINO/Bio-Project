@@ -472,7 +472,7 @@
 
     <!-- Modal de Detalles del Equipo -->
     <div id="modal-detalle" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-950/65 p-3 backdrop-blur-md transition-opacity sm:p-6" role="dialog" aria-modal="true" aria-labelledby="modal-nombre">
-        <div class="relative flex h-[92vh] max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_-20px_rgba(2,44,46,.55)] ring-1 ring-white/30">
+        <div class="relative flex h-[92vh] max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_-20px_rgba(2,44,46,.55)] ring-1 ring-white/30" style="display:flex;flex-direction:column;height:92vh;height:92dvh;max-height:92vh;max-height:92dvh;min-height:0">
             <div class="relative shrink-0 overflow-hidden bg-gradient-to-br from-clinica-900 via-[#0d4142] to-clinica-600 px-5 py-5 text-white sm:px-8 sm:py-6">
                 <div class="pointer-events-none absolute -right-8 -top-20 h-56 w-56 rounded-full border-[28px] border-white/5"></div>
                 <div class="relative flex items-start justify-between gap-4">
@@ -487,7 +487,7 @@
                 </div>
             </div>
 
-            <div id="modal-detalle-contenido" class="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-7">
+            <div id="modal-detalle-contenido" class="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-4 sm:p-7" style="flex:1 1 0%;min-height:0;overflow-y:auto">
                 <section aria-label="Información del equipo">
                     <div class="mb-3 flex items-center gap-2"><span class="h-5 w-1 rounded-full bg-clinica-500"></span><h4 class="text-sm font-bold text-slate-800">Información del equipo</h4></div>
                     <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
@@ -1676,14 +1676,11 @@
                 const equipo = equipos.find((item) => item.id_equipo === equipoModalId);
                 if (!equipo) throw new Error('No se encontró el equipo para actualizar su fotografía.');
                 equipo.foto_equipo = resultado.foto_equipo;
-                if (urlVistaPreviaFotoLocal) {
-                    URL.revokeObjectURL(urlVistaPreviaFotoLocal);
-                    urlVistaPreviaFotoLocal = null;
-                }
                 input.value = '';
                 document.getElementById('nombre-imagen-equipo').textContent = 'JPG, PNG o WebP · máximo 5 MB';
                 document.getElementById('nombre-imagen-equipo').className = 'mt-0.5 block truncate text-[11px] text-slate-400';
-                abrirModalDetalle(equipo);
+                document.getElementById('modal-foto-vacia').classList.add('hidden');
+                document.getElementById('btn-ampliar-foto-equipo').classList.remove('hidden');
                 const confirmacion = document.getElementById('modal-imagen-msg');
                 confirmacion.className = 'mt-2 text-xs font-semibold text-emerald-700';
                 confirmacion.textContent = 'Imagen subida correctamente a Supabase Storage.';
