@@ -56,6 +56,27 @@
         @media (prefers-reduced-motion: reduce) {
             #sidebar, #contenido, #sidebar-overlay { transition: none; }
         }
+        /* La ficha de equipo usa una cuadrícula explícita para mantener siempre
+           el encabezado y las acciones visibles, aunque el contenido sea largo. */
+        #modal-detalle:not(.hidden) { display: grid !important; place-items: center; overflow: hidden; }
+        #modal-detalle-panel {
+            display: grid !important;
+            grid-template-rows: auto minmax(0, 1fr) auto;
+            width: min(100%, 56rem);
+            height: min(92vh, 58rem);
+            height: min(92dvh, 58rem);
+            max-height: calc(100vh - 1.5rem);
+            max-height: calc(100dvh - 1.5rem);
+            min-height: 0;
+            overflow: hidden;
+            overflow-anchor: none;
+        }
+        #modal-detalle-panel > header { min-height: 0; }
+        #modal-detalle-contenido { min-height: 0 !important; height: 100%; overflow-y: auto !important; overscroll-behavior: contain; overflow-anchor: none; }
+        #modal-detalle-panel > footer { min-height: 4.5rem; }
+        @media (max-width: 640px) {
+            #modal-detalle-panel { height: calc(100dvh - 1.5rem); max-height: calc(100dvh - 1.5rem); }
+        }
     </style>
 </head>
 <body class="sin-anim min-h-screen bg-slate-50 text-slate-800 antialiased">
@@ -472,8 +493,8 @@
 
     <!-- Modal de Detalles del Equipo -->
     <div id="modal-detalle" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-950/65 p-3 backdrop-blur-md transition-opacity sm:p-6" role="dialog" aria-modal="true" aria-labelledby="modal-nombre">
-        <div class="relative flex h-[92vh] max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_-20px_rgba(2,44,46,.55)] ring-1 ring-white/30" style="display:flex;flex-direction:column;height:92vh;height:92dvh;max-height:92vh;max-height:92dvh;min-height:0">
-            <div class="relative shrink-0 overflow-hidden bg-gradient-to-br from-clinica-900 via-[#0d4142] to-clinica-600 px-5 py-5 text-white sm:px-8 sm:py-6">
+        <div id="modal-detalle-panel" class="relative rounded-3xl bg-white shadow-[0_24px_80px_-20px_rgba(2,44,46,.55)] ring-1 ring-white/30">
+            <header class="relative overflow-hidden bg-gradient-to-br from-clinica-900 via-[#0d4142] to-clinica-600 px-5 py-5 text-white sm:px-8 sm:py-6">
                 <div class="pointer-events-none absolute -right-8 -top-20 h-56 w-56 rounded-full border-[28px] border-white/5"></div>
                 <div class="relative flex items-start justify-between gap-4">
                     <div class="min-w-0"><span id="modal-categoria-badge" class="inline-flex rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold tracking-wide text-teal-100 ring-1 ring-white/15">Categoría</span>
@@ -485,9 +506,9 @@
                     </svg>
                 </button>
                 </div>
-            </div>
+            </header>
 
-            <div id="modal-detalle-contenido" class="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-4 sm:p-7" style="flex:1 1 0%;min-height:0;overflow-y:auto">
+            <div id="modal-detalle-contenido" class="space-y-6 overscroll-contain p-4 sm:p-7">
                 <section aria-label="Información del equipo">
                     <div class="mb-3 flex items-center gap-2"><span class="h-5 w-1 rounded-full bg-clinica-500"></span><h4 class="text-sm font-bold text-slate-800">Información del equipo</h4></div>
                     <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
@@ -584,12 +605,12 @@
                 <section class="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 sm:p-5"><div class="mb-3 flex items-center gap-2"><span class="h-5 w-1 rounded-full bg-clinica-500"></span><h4 class="text-sm font-bold text-slate-800">Historial de mantenimiento</h4></div><ul id="modal-hoja-vida" class="space-y-2 text-xs text-slate-600"></ul></section>
             </div>
 
-            <div class="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-7">
+            <footer class="flex items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-7">
                 <button id="btn-mto-desde-modal" type="button" class="rounded-xl px-4 py-2.5 text-sm font-semibold text-clinica-700 transition hover:bg-clinica-50">Registrar mantenimiento</button>
                 <button id="btn-cerrar-modal-footer" type="button" class="rounded-xl bg-slate-100 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-200">
                     Cerrar
                 </button>
-            </div>
+            </footer>
         </div>
     </div>
 
@@ -1099,7 +1120,8 @@
 
         // --- FUNCIONES DEL MODAL ---
         function abrirModalDetalle(equipo) {
-            document.getElementById('modal-detalle-contenido').scrollTop = 0;
+            const contenidoModal = document.getElementById('modal-detalle-contenido');
+            contenidoModal.scrollTop = 0;
             document.getElementById('modal-nombre').textContent = equipo.nombre_equipo || 'Sin nombre';
             document.getElementById('modal-id').textContent = `ID: ${equipo.id_equipo || 'N/A'}`;
             document.getElementById('modal-categoria-badge').textContent = equipo.tipo_categoria || 'General';
@@ -1153,10 +1175,20 @@
             prepararCambioEstado(equipo);
             renderizarHojaVida(equipo.id_equipo);
             modal.classList.remove('hidden');
+            document.body.dataset.modalDetalleOverflowAnterior ??= document.body.style.overflow;
+            document.body.style.overflow = 'hidden';
+            requestAnimationFrame(() => {
+                contenidoModal.scrollTop = 0;
+                document.getElementById('modal-detalle-panel').scrollTop = 0;
+            });
         }
 
         function cerrarModalDetalle() {
             modal.classList.add('hidden');
+            if (document.body.dataset.modalDetalleOverflowAnterior !== undefined) {
+                document.body.style.overflow = document.body.dataset.modalDetalleOverflowAnterior;
+                delete document.body.dataset.modalDetalleOverflowAnterior;
+            }
             if (urlVistaPreviaFotoLocal) {
                 URL.revokeObjectURL(urlVistaPreviaFotoLocal);
                 urlVistaPreviaFotoLocal = null;
